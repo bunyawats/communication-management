@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/bunyawats/simple-go-htmx/data"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 )
 

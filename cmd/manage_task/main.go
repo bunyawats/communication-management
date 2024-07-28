@@ -10,8 +10,8 @@ import (
 	"github.com/bunyawats/simple-go-htmx/data"
 	"github.com/bunyawats/simple-go-htmx/model"
 	"github.com/go-redis/redis/v8"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sony/sonyflake"
-	"github.com/streadway/amqp"
 	"log"
 	"os"
 	"time"
@@ -34,8 +34,7 @@ var (
 	db  *sql.DB
 	err error
 
-	repo   *data.Repository
-	client *redis.Client
+	repo *data.Repository
 
 	ctx = context.Background()
 )
@@ -50,7 +49,7 @@ func init() {
 
 	repo = data.NewRepository(db, ctx)
 
-	client = redis.NewClient(&redis.Options{
+	_ = redis.NewClient(&redis.Options{
 		Addr:     redisUri,
 		Password: "", // no password set
 		DB:       0,  // use default DB
@@ -145,10 +144,9 @@ func creatNewTask(taskId string) {
 		}
 	}
 
-	t := time.Now().Add(2 * time.Minute)
+	t := time.Now().Add(time.Minute)
 
 	timeString := t.Format(model.TimeFormat)
-	const cornPattern = "* * * * *"
 
 	task := model.Task{
 		TaskID:       taskId,
