@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	_ "database/sql"
 	"fmt"
-	"github.com/bunyawats/simple-go-htmx/data/mysql"
-	"github.com/bunyawats/simple-go-htmx/model"
+	"github.com/bunyawats/communication-management/data/mysql"
+	"github.com/bunyawats/communication-management/model"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 )

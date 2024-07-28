@@ -5,11 +5,12 @@ import (
 )
 
 const (
+	RabbitUri = "amqp://user:password@localhost:5672/"
+
 	Status_Ceated   = "CREATED"
 	Status_Inactive = "INACTIVE"
 
 	RoutingKey = "#"
-
 	TimeFormat = "2006-01-02 15:04:05"
 )
 

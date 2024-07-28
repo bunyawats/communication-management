@@ -1,4 +1,4 @@
-module github.com/bunyawats/simple-go-htmx
+module github.com/bunyawats/communication-management
 
 go 1.22.5
 
