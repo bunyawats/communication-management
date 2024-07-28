@@ -3,39 +3,25 @@ package main
 import (
 	"context"
 	"database/sql"
-	"github.com/bunyawats/simple-go-htmx/data"
+	"github.com/bunyawats/simple-go-htmx/service"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 )
 
 const (
 	rabbitUri = "amqp://user:password@localhost:5672/"
-	mysqlUri  = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
 )
 
 var (
 	db  *sql.DB
 	err error
 
-	repo *data.Repository
-
 	ctx = context.Background()
 )
-
-func init() {
-	//	prometheus.MustRegister(tasksProcessed)
-	db, err = sql.Open("mysql", mysqlUri)
-	if err != nil {
-		//l.Error("Fail on connect to MySql")
-		log.Fatal("can not open database")
-	}
-}
 
 func main() {
 
 	forever := make(chan struct{})
-
-	repo = data.NewRepository(db, ctx)
 
 	go consumeChunks()
 
@@ -93,20 +79,6 @@ func consumeChunks() {
 	}
 
 	for d := range msgs {
-		executeTask(d.Body)
+		service.ExecuteChunk(d.Body)
 	}
-}
-
-func executeTask(body []byte) {
-	log.Printf("msg body: %s\n", body)
-	chunkId := string(body)
-	emailList, err := repo.ListNotiEmailByChunk(chunkId)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	for _, email := range emailList {
-		log.Printf("Notification Detail: %s\n", email)
-	}
-
 }

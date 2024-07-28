@@ -194,6 +194,37 @@ func enqueueTask(task model.Task) {
 	//	log.Println("Enqueued task")
 }
 
+func executeTask(rs *redsync.Redsync, body []byte) {
+
+	taskId := string(body)
+	taskLockName := fmt.Sprintf("%s_%s", mutexname, taskId)
+	log.Printf("taskLockName: %v", taskLockName)
+	mutex := rs.NewMutex(taskLockName)
+	if err := mutex.TryLock(); err != nil {
+		log.Printf("Could not obtain lock: %v\n", err)
+		return
+	}
+
+	log.Printf("Obtained lock, executing task: %s\n", taskId)
+
+	chunkPartitionList, err := repo.ListAllChunkPartition(taskId)
+	if err != nil {
+		log.Println(err)
+	} else {
+		enqueueChunk(chunkPartitionList)
+		//tasksProcessed.Inc()
+	}
+
+	// Add delay to make sure redis can obtain the mutex lock.
+	//time.Sleep(5 * time.Second)
+
+	if ok, err := mutex.Unlock(); !ok || err != nil {
+		log.Println("Could not release lock:", err)
+	} else {
+		log.Println("Task completed and lock released")
+	}
+}
+
 func consumeTasks(rs *redsync.Redsync) {
 	conn, err := amqp.Dial(rabbitUri)
 	if err != nil {
@@ -240,37 +271,6 @@ func consumeTasks(rs *redsync.Redsync) {
 		log.Println("-----------------------------")
 		log.Printf("executeTask: %v\n", string(d.Body))
 		go executeTask(rs, d.Body)
-	}
-}
-
-func executeTask(rs *redsync.Redsync, body []byte) {
-
-	taskId := string(body)
-	taskLockName := fmt.Sprintf("%s_%s", mutexname, taskId)
-	log.Printf("taskLockName: %v", taskLockName)
-	mutex := rs.NewMutex(taskLockName)
-	if err := mutex.TryLock(); err != nil {
-		log.Printf("Could not obtain lock: %v\n", err)
-		return
-	}
-
-	log.Printf("Obtained lock, executing task: %s\n", taskId)
-
-	chunkPartitionList, err := repo.ListAllChunkPartition(taskId)
-	if err != nil {
-		log.Println(err)
-	} else {
-		enqueueChunk(chunkPartitionList)
-		//tasksProcessed.Inc()
-	}
-
-	// Add delay to make sure redis can obtain the mutex lock.
-	//time.Sleep(5 * time.Second)
-
-	if ok, err := mutex.Unlock(); !ok || err != nil {
-		log.Println("Could not release lock:", err)
-	} else {
-		log.Println("Task completed and lock released")
 	}
 }
 
