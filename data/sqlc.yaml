@@ -1,0 +1,19 @@
+version: '2'
+sql:
+  - name: mysql
+    schema: mysql/schema.sql
+    queries: mysql/query.sql
+    engine: mysql
+    database:
+      uri: "${VET_TEST_EXAMPLES_MYSQL_AUTHORS}"
+    rules:
+      - sqlc/db-prepare
+    # - mysql-query-too-costly
+    gen:
+      go:
+        package: mysql
+        out: mysql
+rules:
+  - name: mysql-query-too-costly
+    message: "Too costly"
+    rule: "has(mysql.explain.query_block.cost_info) && double(mysql.explain.query_block.cost_info.query_cost) > 2.0"
