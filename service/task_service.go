@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -56,12 +57,10 @@ func generateUniqProcessId() string {
 	return fmt.Sprintf("%v", id)
 }
 
-func loadManifest() (model.Manifest, error) {
-	// Specify the file path
-	filePath := "manifest.json"
+func loadManifest(manifestFile string) (model.Manifest, error) {
 
 	// Open the JSON file
-	file, err := os.Open(filePath)
+	file, err := os.Open(manifestFile)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return model.Manifest{}, err
@@ -86,13 +85,49 @@ func loadManifest() (model.Manifest, error) {
 	return manifest, nil
 }
 
+// MoveFile moves a file from src to dst
+func moveProcessedFile(fileName string) error {
+
+	// Create the destination directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir("./processed/dummy.txt"), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Open the source file
+	sourceFile, err := os.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	// Create the destination file
+	destinationFile, err := os.Create("./processed/" + fileName)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destinationFile.Close()
+
+	// Copy the contents from source to destination
+	if _, err := io.Copy(destinationFile, sourceFile); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	// Remove the original source file
+	if err := os.Remove(fileName); err != nil {
+		return fmt.Errorf("failed to remove source file: %w", err)
+	}
+
+	return nil
+}
+
 func CreatNewTask() (model.Task, error) {
 
 	taskId := generateUniqProcessId()
 
 	log.Println("Create New Task")
 
-	manifest, err := loadManifest()
+	manifestFile := "manifest.json"
+	manifest, err := loadManifest(manifestFile)
 	if err != nil {
 		log.Fatalf("Error loading manifest: %v", err)
 	}
@@ -145,6 +180,10 @@ func CreatNewTask() (model.Task, error) {
 		TaskStatus:      model.Status_Ceated,
 	}
 	err = repo.CreateNewTask(task)
+
+	err = moveProcessedFile(manifestFile)
+	err = moveProcessedFile(dataInputFile)
+
 	return task, err
 }
 
