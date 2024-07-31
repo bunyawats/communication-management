@@ -16,12 +16,12 @@ const (
 
 type (
 	Task struct {
-		TaskID       string `json:"taskID,omitempty"`
-		TaskName     string `json:"taskName,omitempty"`
-		CronPattern  string `json:"cronPattern,omitempty"`
-		InputFileUrl string `json:"inputFileUrl,omitempty"`
-		TaskStatus   string `json:"taskStatus,omitempty"`
-		ChunkSize    int    `json:"chunkSize,omitempty"`
+		TaskID          string `json:"taskID,omitempty"`
+		TaskName        string `json:"taskName,omitempty"`
+		SchedulePattern string `json:"schedule_pattern,omitempty"`
+		InputFileUrl    string `json:"inputFileUrl,omitempty"`
+		TaskStatus      string `json:"taskStatus,omitempty"`
+		ChunkSize       int    `json:"chunkSize,omitempty"`
 	}
 
 	NotificationDetail struct {

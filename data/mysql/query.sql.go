@@ -28,24 +28,24 @@ func (q *Queries) CreateNotificationDetail(ctx context.Context, arg CreateNotifi
 
 const createTask = `-- name: CreateTask :execresult
 INSERT INTO task
-(task_id, task_name, cron_pattern, input_file_url, task_status, chunk_size)
+(task_id, task_name, schedule_pattern, input_file_url, task_status, chunk_size)
 VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateTaskParams struct {
-	TaskID       string
-	TaskName     string
-	CronPattern  string
-	InputFileUrl string
-	TaskStatus   sql.NullString
-	ChunkSize    sql.NullInt32
+	TaskID          string
+	TaskName        string
+	SchedulePattern string
+	InputFileUrl    string
+	TaskStatus      sql.NullString
+	ChunkSize       sql.NullInt32
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (sql.Result, error) {
 	return q.db.ExecContext(ctx, createTask,
 		arg.TaskID,
 		arg.TaskName,
-		arg.CronPattern,
+		arg.SchedulePattern,
 		arg.InputFileUrl,
 		arg.TaskStatus,
 		arg.ChunkSize,
@@ -53,7 +53,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (sql.Res
 }
 
 const getTaskById = `-- name: GetTaskById :one
-SELECT task_id, task_name, cron_pattern, input_file_url, task_status, chunk_size
+SELECT task_id, task_name, schedule_pattern, input_file_url, task_status, chunk_size
 FROM task
 WHERE task_id = ?
 `
@@ -64,7 +64,7 @@ func (q *Queries) GetTaskById(ctx context.Context, taskID string) (Task, error) 
 	err := row.Scan(
 		&i.TaskID,
 		&i.TaskName,
-		&i.CronPattern,
+		&i.SchedulePattern,
 		&i.InputFileUrl,
 		&i.TaskStatus,
 		&i.ChunkSize,
@@ -73,7 +73,7 @@ func (q *Queries) GetTaskById(ctx context.Context, taskID string) (Task, error) 
 }
 
 const listAllActiveTasks = `-- name: ListAllActiveTasks :many
-SELECT task_id, task_name, cron_pattern, input_file_url, task_status, chunk_size
+SELECT task_id, task_name, schedule_pattern, input_file_url, task_status, chunk_size
 FROM task
 WHERE task_status != "INACTIVE"
 `
@@ -90,7 +90,7 @@ func (q *Queries) ListAllActiveTasks(ctx context.Context) ([]Task, error) {
 		if err := rows.Scan(
 			&i.TaskID,
 			&i.TaskName,
-			&i.CronPattern,
+			&i.SchedulePattern,
 			&i.InputFileUrl,
 			&i.TaskStatus,
 			&i.ChunkSize,

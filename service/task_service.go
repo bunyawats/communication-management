@@ -4,19 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"github.com/bunyawats/communication-management/data"
 	"github.com/bunyawats/communication-management/model"
 	"github.com/sony/sonyflake"
+	"io"
 	"log"
 	"os"
 	"time"
 )
 
 const (
-	dataInputFile = "data.csv"
-	chunkSize     = 4
-	mysqlUri      = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
+	mysqlUri = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
 )
 
 var (
@@ -56,11 +56,53 @@ func generateUniqProcessId() string {
 	return fmt.Sprintf("%v", id)
 }
 
+func loadManifest() map[string]interface{} {
+	// Specify the file path
+	filePath := "manifest.json"
+
+	// Open the JSON file
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return nil
+	}
+	defer file.Close()
+
+	// Read the file content
+	byteValue, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return nil
+	}
+
+	// Unmarshal the JSON content into a map
+	var result map[string]interface{}
+	err = json.Unmarshal(byteValue, &result)
+	if err != nil {
+		fmt.Println("Error unmarshaling JSON:", err)
+		return nil
+	}
+
+	return result
+}
+
 func CreatNewTask() (model.Task, error) {
 
 	taskId := generateUniqProcessId()
 
-	fmt.Println("Create New Task")
+	log.Println("Create New Task")
+
+	manifestMap := loadManifest()
+	log.Printf("Manifest Map: %v", manifestMap)
+
+	taskName := manifestMap["name"].(string)
+	dataMap := manifestMap["data"].(map[string]interface{})
+	log.Printf("Manifest Data: %v", dataMap)
+
+	schedulePattern := dataMap["schedule_pattern"].(string)
+	chunkSize := int(dataMap["chunkSize"].(float64))
+	dataInputFiles := dataMap["data_files"].([]interface{})
+	dataInputFile := dataInputFiles[0].(string)
 
 	file, err := os.Open(dataInputFile)
 	if err != nil {
@@ -96,16 +138,16 @@ func CreatNewTask() (model.Task, error) {
 	}
 
 	t := time.Now().Add(time.Minute)
-
 	timeString := t.Format(model.TimeFormat)
+	log.Printf("time: %v", timeString)
 
 	task := model.Task{
-		TaskID:       taskId,
-		TaskName:     fmt.Sprintf("%v %v", "send consent ont way", taskId),
-		CronPattern:  timeString,
-		InputFileUrl: dataInputFile,
-		ChunkSize:    chunkSize,
-		TaskStatus:   model.Status_Ceated,
+		TaskID:          taskId,
+		TaskName:        taskName,
+		SchedulePattern: schedulePattern,
+		InputFileUrl:    dataInputFile,
+		ChunkSize:       chunkSize,
+		TaskStatus:      model.Status_Ceated,
 	}
 	err = repo.CreateNewTask(task)
 	return task, err

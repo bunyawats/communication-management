@@ -45,12 +45,12 @@ func (r *Repository) CreateNewTask(t model.Task) error {
 	log.Println("call Repository.CreateNewTask")
 
 	task := mysql.CreateTaskParams{
-		TaskID:       t.TaskID,
-		TaskName:     t.TaskName,
-		CronPattern:  t.CronPattern,
-		InputFileUrl: t.InputFileUrl,
-		TaskStatus:   sql.NullString{String: t.TaskStatus, Valid: true},
-		ChunkSize:    sql.NullInt32{Int32: int32(t.ChunkSize), Valid: true},
+		TaskID:          t.TaskID,
+		TaskName:        t.TaskName,
+		SchedulePattern: t.SchedulePattern,
+		InputFileUrl:    t.InputFileUrl,
+		TaskStatus:      sql.NullString{String: t.TaskStatus, Valid: true},
+		ChunkSize:       sql.NullInt32{Int32: int32(t.ChunkSize), Valid: true},
 	}
 
 	log.Println("Create Task", task)
@@ -87,11 +87,11 @@ func (r *Repository) ListAllActiveTask() ([]model.Task, error) {
 	}
 	for _, t := range taskList {
 		task := model.Task{
-			TaskID:      t.TaskID,
-			TaskName:    t.TaskName,
-			TaskStatus:  t.TaskStatus.String,
-			CronPattern: t.CronPattern,
-			ChunkSize:   int(t.ChunkSize.Int32),
+			TaskID:          t.TaskID,
+			TaskName:        t.TaskName,
+			TaskStatus:      t.TaskStatus.String,
+			SchedulePattern: t.SchedulePattern,
+			ChunkSize:       int(t.ChunkSize.Int32),
 		}
 		listActiveTasks = append(listActiveTasks, task)
 	}
@@ -120,11 +120,11 @@ func (r *Repository) GetTaskById(taskId string) (model.Task, error) {
 	}
 
 	task := model.Task{
-		TaskID:      t.TaskID,
-		TaskName:    t.TaskName,
-		TaskStatus:  t.TaskStatus.String,
-		CronPattern: t.CronPattern,
-		ChunkSize:   int(t.ChunkSize.Int32),
+		TaskID:          t.TaskID,
+		TaskName:        t.TaskName,
+		TaskStatus:      t.TaskStatus.String,
+		SchedulePattern: t.SchedulePattern,
+		ChunkSize:       int(t.ChunkSize.Int32),
 	}
 
 	return task, nil

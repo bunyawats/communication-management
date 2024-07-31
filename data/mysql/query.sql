@@ -11,13 +11,13 @@ FROM notification_detail
 WHERE chunk_partition = ?;
 
 /* name: ListAllActiveTasks :many */
-SELECT task_id, task_name, cron_pattern, input_file_url, task_status, chunk_size
+SELECT task_id, task_name, schedule_pattern, input_file_url, task_status, chunk_size
 FROM task
 WHERE task_status != "INACTIVE";
 
 /* name: CreateTask :execresult */
 INSERT INTO task
-(task_id, task_name, cron_pattern, input_file_url, task_status, chunk_size)
+(task_id, task_name, schedule_pattern, input_file_url, task_status, chunk_size)
 VALUES (?, ?, ?, ?, ?, ?);
 
 /* name: CreateNotificationDetail :execresult */
@@ -31,6 +31,6 @@ SET task_status=?
 WHERE task_id = ?;
 
 /* name: GetTaskById :one */
-SELECT task_id, task_name, cron_pattern, input_file_url, task_status, chunk_size
+SELECT task_id, task_name, schedule_pattern, input_file_url, task_status, chunk_size
 FROM task
 WHERE task_id = ?;

@@ -16,10 +16,10 @@ type NotificationDetail struct {
 }
 
 type Task struct {
-	TaskID       string
-	TaskName     string
-	CronPattern  string
-	InputFileUrl string
-	TaskStatus   sql.NullString
-	ChunkSize    sql.NullInt32
+	TaskID          string
+	TaskName        string
+	SchedulePattern string
+	InputFileUrl    string
+	TaskStatus      sql.NullString
+	ChunkSize       sql.NullInt32
 }
