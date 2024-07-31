@@ -31,4 +31,15 @@ type (
 	}
 
 	TaskJobs map[string]uuid.UUID
+
+	Manifest struct {
+		Version     string `json:"version,omitempty"`
+		Name        string `json:"name,omitempty"`
+		Description string `json:"description,omitempty"`
+		Data        struct {
+			SchedulePattern string   `json:"schedule_pattern,omitempty"`
+			ChunkSize       int      `json:"chunkSize,omitempty"`
+			DataFiles       []string `json:"data_files,omitempty"`
+		} `json:"data,omitempty"`
+	}
 )

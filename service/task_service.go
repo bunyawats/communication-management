@@ -56,7 +56,7 @@ func generateUniqProcessId() string {
 	return fmt.Sprintf("%v", id)
 }
 
-func loadManifest() map[string]interface{} {
+func loadManifest() (model.Manifest, error) {
 	// Specify the file path
 	filePath := "manifest.json"
 
@@ -64,7 +64,7 @@ func loadManifest() map[string]interface{} {
 	file, err := os.Open(filePath)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
-		return nil
+		return model.Manifest{}, err
 	}
 	defer file.Close()
 
@@ -72,18 +72,18 @@ func loadManifest() map[string]interface{} {
 	byteValue, err := io.ReadAll(file)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
-		return nil
+		return model.Manifest{}, err
 	}
 
 	// Unmarshal the JSON content into a map
-	var result map[string]interface{}
-	err = json.Unmarshal(byteValue, &result)
+	var manifest model.Manifest
+	err = json.Unmarshal(byteValue, &manifest)
 	if err != nil {
 		fmt.Println("Error unmarshaling JSON:", err)
-		return nil
+		return model.Manifest{}, err
 	}
 
-	return result
+	return manifest, nil
 }
 
 func CreatNewTask() (model.Task, error) {
@@ -92,18 +92,13 @@ func CreatNewTask() (model.Task, error) {
 
 	log.Println("Create New Task")
 
-	manifestMap := loadManifest()
-	log.Printf("Manifest Map: %v", manifestMap)
+	manifest, err := loadManifest()
+	if err != nil {
+		log.Fatalf("Error loading manifest: %v", err)
+	}
+	log.Printf("Manifest: %v", manifest)
 
-	taskName := manifestMap["name"].(string)
-	dataMap := manifestMap["data"].(map[string]interface{})
-	log.Printf("Manifest Data: %v", dataMap)
-
-	schedulePattern := dataMap["schedule_pattern"].(string)
-	chunkSize := int(dataMap["chunkSize"].(float64))
-	dataInputFiles := dataMap["data_files"].([]interface{})
-	dataInputFile := dataInputFiles[0].(string)
-
+	dataInputFile := manifest.Data.DataFiles[0]
 	file, err := os.Open(dataInputFile)
 	if err != nil {
 		log.Fatalf("failed to open file: %s", err)
@@ -132,7 +127,7 @@ func CreatNewTask() (model.Task, error) {
 			TaskID:         taskId,
 		})
 
-		if chunkIndex++; chunkIndex == chunkSize {
+		if chunkIndex++; chunkIndex == manifest.Data.ChunkSize {
 			chunkIndex = 0
 		}
 	}
@@ -143,10 +138,10 @@ func CreatNewTask() (model.Task, error) {
 
 	task := model.Task{
 		TaskID:          taskId,
-		TaskName:        taskName,
-		SchedulePattern: schedulePattern,
+		TaskName:        manifest.Name,
+		SchedulePattern: manifest.Data.SchedulePattern,
 		InputFileUrl:    dataInputFile,
-		ChunkSize:       chunkSize,
+		ChunkSize:       manifest.Data.ChunkSize,
 		TaskStatus:      model.Status_Ceated,
 	}
 	err = repo.CreateNewTask(task)
