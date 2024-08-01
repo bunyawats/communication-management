@@ -27,18 +27,16 @@ const (
 )
 
 var (
-	db  *sql.DB
-	err error
-
+	db   *sql.DB
+	err  error
 	repo *data.Repository
-
-	ctx = context.Background()
-
-	Rs *redsync.Redsync
+	Rs   *redsync.Redsync
 )
 
 func init() {
-	//	prometheus.MustRegister(tasksProcessed)
+
+	ctx := context.Background()
+
 	db, err = sql.Open("mysql", mysqlUri)
 	if err != nil {
 		//l.Error("Fail on connect to MySql")
