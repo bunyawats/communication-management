@@ -161,3 +161,51 @@ func EnqueueChunk(chunkList []string) {
 
 	log.Println("Enqueued chunks")
 }
+
+func EnqueueScanner(fileName string) {
+
+	log.Printf("enqueueScanner: %v on schedule", fileName)
+
+	conn, err := amqp091.Dial(model.RabbitUri)
+	if err != nil {
+		log.Print(err)
+	}
+	defer func(conn *amqp091.Connection) {
+		_ = conn.Close()
+	}(conn)
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(ch *amqp091.Channel) {
+		_ = ch.Close()
+	}(ch)
+
+	q, err := ch.QueueDeclare(
+		"scanner_queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	body := fileName
+	err = ch.Publish(
+		"",
+		q.Name,
+		false,
+		false,
+		amqp091.Publishing{
+			DeliveryMode: amqp091.Persistent,
+			ContentType:  "text/plain",
+			Body:         []byte(body),
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
