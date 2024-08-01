@@ -153,9 +153,10 @@ func CreatNewTask() (model.Task, error) {
 
 	// Process the records
 	chunkIndex := 0
+	chunkCounter := 0
 	for _, record := range records {
 		log.Printf("Email: %s\n", record[0])
-		chunkPartition := fmt.Sprintf("%v_%v", taskId, chunkIndex)
+		chunkPartition := fmt.Sprintf("%v_%v", taskId, chunkCounter)
 		_ = repo.CreateNewNotificationDetail(model.NotificationDetail{
 			Email:          record[0],
 			ChunkPartition: chunkPartition,
@@ -164,6 +165,7 @@ func CreatNewTask() (model.Task, error) {
 
 		if chunkIndex++; chunkIndex == manifest.Data.ChunkSize {
 			chunkIndex = 0
+			chunkCounter++
 		}
 	}
 
