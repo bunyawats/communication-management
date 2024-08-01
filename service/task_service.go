@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"github.com/bunyawats/communication-management/data"
 	"github.com/bunyawats/communication-management/model"
+	"github.com/go-redis/redis/v8"
+	"github.com/go-redsync/redsync/v4"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	"github.com/sony/sonyflake"
 	"io"
 	"log"
@@ -17,7 +20,9 @@ import (
 )
 
 const (
-	mysqlUri = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
+	mysqlUri  = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
+	mutexName = "distributed-lock"
+	redisUri  = "localhost:6379"
 )
 
 var (
@@ -27,6 +32,8 @@ var (
 	repo *data.Repository
 
 	ctx = context.Background()
+
+	Rs *redsync.Redsync
 )
 
 func init() {
@@ -38,6 +45,13 @@ func init() {
 	}
 
 	repo = data.NewRepository(db, ctx)
+
+	client := redis.NewClient(&redis.Options{
+		Addr: redisUri,
+	})
+
+	pool := goredis.NewPool(client)
+	Rs = redsync.New(pool)
 
 }
 
@@ -118,6 +132,33 @@ func moveProcessedFile(fileName string) error {
 	}
 
 	return nil
+}
+
+func ExecuteTask(rs *redsync.Redsync, body []byte) {
+
+	taskId := string(body)
+	taskLockName := fmt.Sprintf("%s_%s", mutexName, taskId)
+	log.Printf("taskLockName: %v", taskLockName)
+	mutex := rs.NewMutex(taskLockName)
+	if err := mutex.TryLock(); err != nil {
+		log.Printf("Could not obtain lock: %v\n", err)
+		return
+	}
+
+	log.Printf("Obtained lock, executing task: %s\n", taskId)
+
+	chunkPartitionList, err := repo.ListAllChunkPartition(taskId)
+	if err != nil {
+		log.Println(err)
+	} else {
+		EnqueueChunk(chunkPartitionList)
+	}
+
+	if ok, err := mutex.Unlock(); !ok || err != nil {
+		log.Println("Could not release lock:", err)
+	} else {
+		log.Println("Task completed and lock released")
+	}
 }
 
 func CreatNewTask() (model.Task, error) {

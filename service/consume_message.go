@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"github.com/bunyawats/communication-management/model"
-	"github.com/go-redsync/redsync/v4"
 	"github.com/rabbitmq/amqp091-go"
 	"log"
 )
@@ -61,7 +60,7 @@ func ConsumeChunks() {
 	}
 }
 
-func ConsumeTasks(rs *redsync.Redsync, executeTask func(rs *redsync.Redsync, body []byte)) {
+func ConsumeTasks() {
 	conn, err := amqp091.Dial(model.RabbitUri)
 	if err != nil {
 		log.Fatal(err)
@@ -106,7 +105,7 @@ func ConsumeTasks(rs *redsync.Redsync, executeTask func(rs *redsync.Redsync, bod
 	for d := range msgs {
 		log.Println("-----------------------------")
 		log.Printf("executeTask: %v\n", string(d.Body))
-		go executeTask(rs, d.Body)
+		go ExecuteTask(Rs, d.Body)
 	}
 }
 
