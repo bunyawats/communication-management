@@ -13,7 +13,7 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func SignalToAllProcess(t model.Task) {
+func SignalToAllSchedulerProcess(t model.Task) {
 	conn, err := amqp091.Dial(model.RabbitUri)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer func(conn *amqp091.Connection) {
@@ -63,7 +63,8 @@ func SignalToAllProcess(t model.Task) {
 
 func EnqueueTask(task model.Task) {
 
-	//	log.Printf("enqueueTask: %v\n", task.TaskID)
+	log.Printf("enqueueTask: %v on schedule", task.TaskID)
+
 	conn, err := amqp091.Dial(model.RabbitUri)
 	if err != nil {
 		log.Print(err)
@@ -106,7 +107,6 @@ func EnqueueTask(task model.Task) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//	log.Println("Enqueued task")
 }
 
 func EnqueueChunk(chunkList []string) {

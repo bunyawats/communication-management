@@ -11,11 +11,13 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
+	"github.com/rabbitmq/amqp091-go"
 	"github.com/sony/sonyflake"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -100,22 +102,42 @@ func loadManifest(manifestFile string) (model.Manifest, error) {
 }
 
 // MoveFile moves a file from src to dst
-func moveProcessedFile(fileName string) error {
+func moveProcessedFile(fullFilePath string) error {
+
+	log.Printf("moveProcessedFile: %v\n", fullFilePath)
 
 	// Create the destination directory if it doesn't exist
-	if err := os.MkdirAll(filepath.Dir("./processed/dummy.txt"), 0755); err != nil {
+	processedDir := filepath.Join(filepath.Dir(fullFilePath), "processed")
+	log.Printf("processedDir: %v\n", processedDir)
+
+	if err := os.MkdirAll(processedDir, 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	// Open the source file
-	sourceFile, err := os.Open(fileName)
+	sourceFile, err := os.Open(fullFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer sourceFile.Close()
 
+	separator := "/"
+
+	// Find the last occurrence of the separator
+	lastIndex := strings.LastIndex(fullFilePath, separator)
+
+	// Get the filename part of the file path
+	var filename string
+	if lastIndex != -1 {
+		filename = fullFilePath[lastIndex+1:]
+	} else {
+		filename = fullFilePath
+	}
+
 	// Create the destination file
-	destinationFile, err := os.Create("./processed/" + fileName)
+	destinationFilePath := filepath.Join(processedDir, filename)
+	log.Printf("destinationFilePath : %v\n", destinationFilePath)
+	destinationFile, err := os.Create(destinationFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
@@ -127,7 +149,7 @@ func moveProcessedFile(fileName string) error {
 	}
 
 	// Remove the original source file
-	if err := os.Remove(fileName); err != nil {
+	if err := os.Remove(fullFilePath); err != nil {
 		return fmt.Errorf("failed to remove source file: %w", err)
 	}
 
@@ -161,20 +183,49 @@ func ExecuteTask(rs *redsync.Redsync, body []byte) {
 	}
 }
 
-func CreatNewTask() (model.Task, error) {
+func ExecuteScanner(rs *redsync.Redsync, body []byte) {
+
+	manifestFileName := string(body)
+	taskLockName := fmt.Sprintf("%s_%s", mutexName, manifestFileName)
+	log.Printf("taskLockName: %v", taskLockName)
+	mutex := rs.NewMutex(taskLockName)
+	if err := mutex.TryLock(); err != nil {
+		log.Printf("Could not obtain lock: %v\n", err)
+		return
+	}
+
+	log.Printf("Obtained lock, executing scanner: %s\n", manifestFileName)
+	manifestFile := "../manage_task/manifest.json"
+	task, err := CreatNewTask(manifestFile)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	SignalToAllSchedulerProcess(task)
+
+	if ok, err := mutex.Unlock(); !ok || err != nil {
+		log.Println("Could not release lock:", err)
+	} else {
+		log.Println("Task completed and lock released")
+	}
+}
+
+func CreatNewTask(manifestFile string) (model.Task, error) {
 
 	taskId := generateUniqProcessId()
-
 	log.Println("Create New Task")
 
-	manifestFile := "manifest.json"
 	manifest, err := loadManifest(manifestFile)
 	if err != nil {
-		log.Fatalf("Error loading manifest: %v", err)
+		log.Printf("Error loading manifest: %v", err)
+		return model.Task{}, err
 	}
 	log.Printf("Manifest: %v", manifest)
 
-	dataInputFile := manifest.Data.DataFiles[0]
+	dir := filepath.Dir(manifestFile)
+	dataInputFile := dir + "/" + manifest.Data.DataFiles[0]
+	log.Printf("dataInputFile: %v", dataInputFile)
+
 	file, err := os.Open(dataInputFile)
 	if err != nil {
 		log.Fatalf("failed to open file: %s", err)
@@ -189,7 +240,8 @@ func CreatNewTask() (model.Task, error) {
 	// Read all records
 	records, err := reader.ReadAll()
 	if err != nil {
-		log.Fatalf("failed to read file: %s", err)
+		log.Printf("failed to read file: %s", err)
+		return model.Task{}, err
 	}
 
 	// Process the records
@@ -258,4 +310,52 @@ func ExecuteChunk(body []byte) {
 		log.Printf("Notification Detail: %s\n", email)
 	}
 
+}
+
+func EnqueueScanner(fileName string) {
+
+	log.Printf("enqueueScanner: %v on schedule", fileName)
+
+	conn, err := amqp091.Dial(model.RabbitUri)
+	if err != nil {
+		log.Print(err)
+	}
+	defer func(conn *amqp091.Connection) {
+		_ = conn.Close()
+	}(conn)
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(ch *amqp091.Channel) {
+		_ = ch.Close()
+	}(ch)
+
+	q, err := ch.QueueDeclare(
+		"scanner_queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	body := fileName
+	err = ch.Publish(
+		"",
+		q.Name,
+		false,
+		false,
+		amqp091.Publishing{
+			DeliveryMode: amqp091.Persistent,
+			ContentType:  "text/plain",
+			Body:         []byte(body),
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
 }

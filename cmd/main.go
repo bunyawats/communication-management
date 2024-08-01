@@ -55,14 +55,39 @@ func main() {
 		log.Printf("active task %d, %v \n", i, t.TaskName)
 		createJobForTask(t)
 	}
-	go service.SubscribeSignal(removeJob, createJobForTask)
+	createManifestScannerTask()
 
 	// start the scheduler
 	scheduler.Start()
+	go service.SubscribeSignal(removeJob, createJobForTask)
 
 	log.Println("waiting for messages")
 	wait := make(chan struct{})
 	<-wait
+}
+
+func createManifestScannerTask() {
+	//const scanCronPattern = "*/2 * * * *"
+	const scanCronPattern = "* * * * *"
+	const manifestFileName = "manifest.json"
+
+	jobDefinition := gocron.CronJob(scanCronPattern, false)
+	// add a job to the scheduler
+	j, err := scheduler.NewJob(
+		jobDefinition,
+		gocron.NewTask(
+			func(manifestFile string) {
+				service.EnqueueScanner(manifestFile)
+			},
+			manifestFileName,
+		),
+	)
+	if err != nil {
+		log.Printf("Error creating job: %v", err)
+		return
+	}
+	// each job has a unique id
+	log.Printf("jobID: %v\n", j.ID())
 }
 
 func createJobForTask(t model.Task) {
@@ -73,7 +98,6 @@ func createJobForTask(t model.Task) {
 		jobDefinition,
 		gocron.NewTask(
 			func(t model.Task) {
-				log.Printf("enqueueTask: %v on schedule", t.TaskID)
 				service.EnqueueTask(t)
 			},
 			t,

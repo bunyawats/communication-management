@@ -17,12 +17,13 @@ func main() {
 
 	task := model.Task{}
 	if *cmd == "add_task" {
-		task, _ = service.CreatNewTask()
+		manifestFile := "manifest.json"
+		task, _ = service.CreatNewTask(manifestFile)
 	} else if *cmd == "delete_task" {
 		if taskId == nil || *taskId == "" {
 			log.Fatal("taskId is required")
 		}
 		task, _ = service.DeleteExistTask(*taskId)
 	}
-	service.SignalToAllProcess(task)
+	service.SignalToAllSchedulerProcess(task)
 }

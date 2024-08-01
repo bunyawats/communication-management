@@ -7,6 +7,7 @@ import (
 
 func main() {
 
+	go service.ConsumeScanner()
 	go service.ConsumeTasks()
 	go service.ConsumeChunks()
 

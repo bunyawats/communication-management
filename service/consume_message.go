@@ -184,3 +184,52 @@ func SubscribeSignal(removeJob func(taskId string), createJobForTask func(t mode
 	}
 
 }
+
+func ConsumeScanner() {
+	conn, err := amqp091.Dial(model.RabbitUri)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(conn *amqp091.Connection) {
+		_ = conn.Close()
+	}(conn)
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func(ch *amqp091.Channel) {
+		_ = ch.Close()
+	}(ch)
+
+	q, err := ch.QueueDeclare(
+		"scanner_queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msgs, err := ch.Consume(
+		q.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for d := range msgs {
+		log.Println("-----------------------------")
+		log.Printf("executeScanner: %v\n", string(d.Body))
+		go ExecuteScanner(Rs, d.Body)
+	}
+}
