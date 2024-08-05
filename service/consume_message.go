@@ -7,105 +7,17 @@ import (
 	"log"
 )
 
-func ConsumeChunks() {
-	conn, err := amqp091.Dial(model.RabbitUri)
+func closeMqConnection(conn *amqp091.Connection) {
+	err := conn.Close()
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(conn *amqp091.Connection) {
-		err := conn.Close()
-		if err != nil {
-			log.Printf("error closing amqp connection: %v", err)
-		}
-	}(conn)
-
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(ch *amqp091.Channel) {
-		err := ch.Close()
-		if err != nil {
-			log.Printf("error closing amqp channel: %v", err)
-		}
-	}(ch)
-
-	q, err := ch.QueueDeclare(
-		"chunk_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	msgs, err := ch.Consume(
-		q.Name,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for d := range msgs {
-		ExecuteChunk(d.Body)
+		log.Printf("Error closing RabbitMQ connection: %v", err)
 	}
 }
 
-func ConsumeTasks() {
-	conn, err := amqp091.Dial(model.RabbitUri)
+func closeMqChannel(ch *amqp091.Channel) {
+	err := ch.Close()
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(conn *amqp091.Connection) {
-		_ = conn.Close()
-	}(conn)
-
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(ch *amqp091.Channel) {
-		_ = ch.Close()
-	}(ch)
-
-	q, err := ch.QueueDeclare(
-		"task_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	msgs, err := ch.Consume(
-		q.Name,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for d := range msgs {
-		log.Println("-----------------------------")
-		log.Printf("executeTask: %v\n", string(d.Body))
-		go ExecuteTask(Rs, d.Body)
+		log.Printf("Error closing RabbitMQ connection: %v", err)
 	}
 }
 
@@ -113,21 +25,10 @@ func SubscribeSignal(removeJob func(taskId string), createJobForTask func(t mode
 
 	conn, err := amqp091.Dial(model.RabbitUri)
 	failOnError(err, "Failed to connect to RabbitMQ")
-	defer func(conn *amqp091.Connection) {
-		err := conn.Close()
-		if err != nil {
-			log.Printf("Error closing RabbitMQ connection: %v", err)
-		}
-	}(conn)
-
+	defer closeMqConnection(conn)
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to open a channel")
-	defer func(ch *amqp091.Channel) {
-		err := ch.Close()
-		if err != nil {
-			log.Printf("Error closing RabbitMQ connection: %v", err)
-		}
-	}(ch)
+	defer closeMqChannel(ch)
 
 	err = ch.ExchangeDeclare(
 		"topic_logs", // name
@@ -186,21 +87,13 @@ func SubscribeSignal(removeJob func(taskId string), createJobForTask func(t mode
 }
 
 func ConsumeScanner() {
-	conn, err := amqp091.Dial(model.RabbitUri)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(conn *amqp091.Connection) {
-		_ = conn.Close()
-	}(conn)
 
+	conn, err := amqp091.Dial(model.RabbitUri)
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer closeMqConnection(conn)
 	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(ch *amqp091.Channel) {
-		_ = ch.Close()
-	}(ch)
+	failOnError(err, "Failed to open a channel")
+	defer closeMqChannel(ch)
 
 	q, err := ch.QueueDeclare(
 		"scanner_queue",
@@ -231,5 +124,85 @@ func ConsumeScanner() {
 		log.Println("-----------------------------")
 		log.Printf("executeScanner: %v\n", string(d.Body))
 		go ExecuteScanner(Rs, d.Body)
+	}
+}
+
+func ConsumeTasks() {
+
+	conn, err := amqp091.Dial(model.RabbitUri)
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer closeMqConnection(conn)
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer closeMqChannel(ch)
+
+	q, err := ch.QueueDeclare(
+		"task_queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msgs, err := ch.Consume(
+		q.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for d := range msgs {
+		log.Println("-----------------------------")
+		log.Printf("executeTask: %v\n", string(d.Body))
+		go ExecuteTask(Rs, d.Body)
+	}
+}
+
+func ConsumeChunks() {
+
+	conn, err := amqp091.Dial(model.RabbitUri)
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer closeMqConnection(conn)
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer closeMqChannel(ch)
+
+	q, err := ch.QueueDeclare(
+		"chunk_queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	msgs, err := ch.Consume(
+		q.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for d := range msgs {
+		ExecuteChunk(d.Body)
 	}
 }

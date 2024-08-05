@@ -98,7 +98,7 @@ func createJobForTask(t model.Task) {
 		jobDefinition,
 		gocron.NewTask(
 			func(t model.Task) {
-				service.EnqueueTask(t)
+				service.EnqueueTask(t.TaskID)
 			},
 			t,
 		),

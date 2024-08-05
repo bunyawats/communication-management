@@ -14,23 +14,13 @@ func failOnError(err error, msg string) {
 }
 
 func SignalToAllSchedulerProcess(t model.Task) {
+
 	conn, err := amqp091.Dial(model.RabbitUri)
 	failOnError(err, "Failed to connect to RabbitMQ")
-	defer func(conn *amqp091.Connection) {
-		err := conn.Close()
-		if err != nil {
-			log.Fatalf("Failed to close RabbitMQ connection")
-		}
-	}(conn)
-
+	defer closeMqConnection(conn)
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to open a channel")
-	defer func(ch *amqp091.Channel) {
-		err := ch.Close()
-		if err != nil {
-			log.Fatalf("Failed to close RabbitMQ channel")
-		}
-	}(ch)
+	defer closeMqChannel(ch)
 
 	err = ch.ExchangeDeclare(
 		"topic_logs", // name
@@ -61,25 +51,53 @@ func SignalToAllSchedulerProcess(t model.Task) {
 	log.Printf(" [x] Sent %s", body)
 }
 
-func EnqueueTask(task model.Task) {
+func EnqueueScanner(fileName string) {
 
-	log.Printf("enqueueTask: %v on schedule", task.TaskID)
-
+	log.Printf("enqueueScanner: %v on schedule", fileName)
 	conn, err := amqp091.Dial(model.RabbitUri)
-	if err != nil {
-		log.Print(err)
-	}
-	defer func(conn *amqp091.Connection) {
-		_ = conn.Close()
-	}(conn)
-
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer closeMqConnection(conn)
 	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer closeMqChannel(ch)
+
+	q, err := ch.QueueDeclare(
+		"scanner_queue",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func(ch *amqp091.Channel) {
-		_ = ch.Close()
-	}(ch)
+
+	body := fileName
+	err = ch.Publish(
+		"",
+		q.Name,
+		false,
+		false,
+		amqp091.Publishing{
+			DeliveryMode: amqp091.Persistent,
+			ContentType:  "text/plain",
+			Body:         []byte(body),
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func EnqueueTask(taskId string) {
+
+	log.Printf("enqueueTask: %v on schedule", taskId)
+	conn, err := amqp091.Dial(model.RabbitUri)
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer closeMqConnection(conn)
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer closeMqChannel(ch)
 
 	q, err := ch.QueueDeclare(
 		"task_queue",
@@ -93,7 +111,7 @@ func EnqueueTask(task model.Task) {
 		log.Fatal(err)
 	}
 
-	body := task.TaskID
+	body := taskId
 	err = ch.Publish(
 		"",
 		q.Name,
@@ -112,20 +130,11 @@ func EnqueueTask(task model.Task) {
 func EnqueueChunk(chunkList []string) {
 
 	conn, err := amqp091.Dial(model.RabbitUri)
-	if err != nil {
-		log.Print(err)
-	}
-	defer func(conn *amqp091.Connection) {
-		_ = conn.Close()
-	}(conn)
-
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer closeMqConnection(conn)
 	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(ch *amqp091.Channel) {
-		_ = ch.Close()
-	}(ch)
+	failOnError(err, "Failed to open a channel")
+	defer closeMqChannel(ch)
 
 	q, err := ch.QueueDeclare(
 		"chunk_queue",
@@ -160,52 +169,4 @@ func EnqueueChunk(chunkList []string) {
 	}
 
 	log.Println("Enqueued chunks")
-}
-
-func EnqueueScanner(fileName string) {
-
-	log.Printf("enqueueScanner: %v on schedule", fileName)
-
-	conn, err := amqp091.Dial(model.RabbitUri)
-	if err != nil {
-		log.Print(err)
-	}
-	defer func(conn *amqp091.Connection) {
-		_ = conn.Close()
-	}(conn)
-
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func(ch *amqp091.Channel) {
-		_ = ch.Close()
-	}(ch)
-
-	q, err := ch.QueueDeclare(
-		"scanner_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	body := fileName
-	err = ch.Publish(
-		"",
-		q.Name,
-		false,
-		false,
-		amqp091.Publishing{
-			DeliveryMode: amqp091.Persistent,
-			ContentType:  "text/plain",
-			Body:         []byte(body),
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
 }
