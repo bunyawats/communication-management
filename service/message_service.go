@@ -7,6 +7,13 @@ import (
 	"log"
 )
 
+const (
+	scannerQueueName = "scanner_queue"
+	taskQueueNam     = "task_queue"
+	chunkQueueName   = "chunk_queue"
+	jobTopicName     = "job_topic"
+)
+
 func failOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)
@@ -98,7 +105,7 @@ func consumeMqMessage(qName string) (
 
 func ConsumeScanner() {
 
-	msgs, conn, ch := consumeMqMessage("scanner_queue")
+	msgs, conn, ch := consumeMqMessage(scannerQueueName)
 	defer closeMqConnection(conn)
 	defer closeMqChannel(ch)
 
@@ -111,7 +118,7 @@ func ConsumeScanner() {
 
 func ConsumeTasks() {
 
-	msgs, conn, ch := consumeMqMessage("task_queue")
+	msgs, conn, ch := consumeMqMessage(taskQueueNam)
 	defer closeMqConnection(conn)
 	defer closeMqChannel(ch)
 
@@ -137,14 +144,14 @@ func EnqueueScanner(fileName string) {
 
 	log.Printf("enqueueScanner: %v on schedule", fileName)
 
-	publishMqMessage(fileName, "scanner_queue")
+	publishMqMessage(fileName, scannerQueueName)
 }
 
 func EnqueueTask(taskId string) {
 
 	log.Printf("enqueueTask: %v on schedule", taskId)
 
-	publishMqMessage(taskId, "task_queue")
+	publishMqMessage(taskId, taskQueueNam)
 }
 
 func EnqueueChunk(chunkList []string) {
@@ -160,7 +167,7 @@ func EnqueueChunk(chunkList []string) {
 	for _, chunkPartition := range chunkList {
 		log.Println(chunkPartition)
 
-		publishMqMessage(chunkPartition, "chunk_queue")
+		publishMqMessage(chunkPartition, chunkQueueName)
 	}
 }
 
@@ -174,7 +181,7 @@ func SignalToAllSchedulerProcess(t model.Task) {
 	defer closeMqChannel(ch)
 
 	err = ch.ExchangeDeclare(
-		"topic_logs", // name
+		jobTopicName, // name
 		"topic",      // type
 		true,         // durable
 		false,        // auto-deleted
@@ -214,7 +221,7 @@ func SubscribeSignal(removeJob func(taskId string),
 	defer closeMqChannel(ch)
 
 	err = ch.ExchangeDeclare(
-		"topic_logs", // name
+		jobTopicName, // name
 		"topic",      // type
 		true,         // durable
 		false,        // auto-deleted
