@@ -21,6 +21,30 @@ func closeMqChannel(ch *amqp091.Channel) {
 	}
 }
 
+func consumeMqMessage(qName string, ch *amqp091.Channel) <-chan amqp091.Delivery {
+	q, err := ch.QueueDeclare(
+		qName,
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to declare queue in RabbitMQ")
+
+	msgs, err := ch.Consume(
+		q.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to message from queue in RabbitMQ")
+	return msgs
+}
+
 func SubscribeSignal(removeJob func(taskId string), createJobForTask func(t model.Task)) {
 
 	conn, err := amqp091.Dial(model.RabbitUri)
@@ -95,31 +119,7 @@ func ConsumeScanner() {
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
-	q, err := ch.QueueDeclare(
-		"scanner_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	msgs, err := ch.Consume(
-		q.Name,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	msgs := consumeMqMessage("scanner_queue", ch)
 	for d := range msgs {
 		log.Println("-----------------------------")
 		log.Printf("executeScanner: %v\n", string(d.Body))
@@ -136,31 +136,7 @@ func ConsumeTasks() {
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
-	q, err := ch.QueueDeclare(
-		"task_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	msgs, err := ch.Consume(
-		q.Name,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	msgs := consumeMqMessage("task_queue", ch)
 	for d := range msgs {
 		log.Println("-----------------------------")
 		log.Printf("executeTask: %v\n", string(d.Body))
@@ -177,31 +153,7 @@ func ConsumeChunks() {
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
-	q, err := ch.QueueDeclare(
-		"chunk_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	msgs, err := ch.Consume(
-		q.Name,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	msgs := consumeMqMessage("chunk_queue", ch)
 	for d := range msgs {
 		ExecuteChunk(d.Body)
 	}

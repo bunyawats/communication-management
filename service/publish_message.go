@@ -13,6 +13,31 @@ func failOnError(err error, msg string) {
 	}
 }
 
+func publishMqMessage(msqBody string, qName string, ch *amqp091.Channel) {
+	q, err := ch.QueueDeclare(
+		qName,
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to declare queue to RabbitMQ")
+
+	body := msqBody
+	err = ch.Publish(
+		"",
+		q.Name,
+		false,
+		false,
+		amqp091.Publishing{
+			DeliveryMode: amqp091.Persistent,
+			ContentType:  "text/plain",
+			Body:         []byte(body),
+		})
+	failOnError(err, "Failed to publish message to queue in RabbitMQ")
+}
+
 func SignalToAllSchedulerProcess(t model.Task) {
 
 	conn, err := amqp091.Dial(model.RabbitUri)
@@ -61,32 +86,7 @@ func EnqueueScanner(fileName string) {
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
-	q, err := ch.QueueDeclare(
-		"scanner_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	body := fileName
-	err = ch.Publish(
-		"",
-		q.Name,
-		false,
-		false,
-		amqp091.Publishing{
-			DeliveryMode: amqp091.Persistent,
-			ContentType:  "text/plain",
-			Body:         []byte(body),
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
+	publishMqMessage(fileName, "scanner_queue", ch)
 }
 
 func EnqueueTask(taskId string) {
@@ -99,32 +99,7 @@ func EnqueueTask(taskId string) {
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
-	q, err := ch.QueueDeclare(
-		"task_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	body := taskId
-	err = ch.Publish(
-		"",
-		q.Name,
-		false,
-		false,
-		amqp091.Publishing{
-			DeliveryMode: amqp091.Persistent,
-			ContentType:  "text/plain",
-			Body:         []byte(body),
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
+	publishMqMessage(taskId, "task_queue", ch)
 }
 
 func EnqueueChunk(chunkList []string) {
@@ -136,37 +111,9 @@ func EnqueueChunk(chunkList []string) {
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
-	q, err := ch.QueueDeclare(
-		"chunk_queue",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	log.Println("Start enqueue chunks")
 	for _, chunkPartition := range chunkList {
 		log.Println(chunkPartition)
-		body := chunkPartition
-		err = ch.Publish(
-			"",
-			q.Name,
-			false,
-			false,
-			amqp091.Publishing{
-				DeliveryMode: amqp091.Persistent,
-				ContentType:  "text/plain",
-				Body:         []byte(body),
-			})
-		if err != nil {
-			log.Fatal(err)
-		}
-
+		publishMqMessage(chunkPartition, "chunk_queue", ch)
 	}
-
-	log.Println("Enqueued chunks")
 }
