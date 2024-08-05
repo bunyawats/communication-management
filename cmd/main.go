@@ -52,7 +52,7 @@ func main() {
 		log.Fatal(err)
 	}
 	for i, t := range allTasks {
-		log.Printf("active task %d, %v \n", i, t.TaskName)
+		log.Printf("active task %d, %v \n", i, t.TaskID)
 		createJobForTask(t)
 	}
 	createManifestScannerTask()
@@ -108,7 +108,7 @@ func createJobForTask(t model.Task) {
 		return
 	}
 	// each job has a unique id
-	log.Printf("jobID: %v\n", j.ID())
+	log.Printf("taskId: %v - jobID: %v\n", t.TaskID, j.ID())
 	taskJobs[t.TaskID] = j.ID()
 }
 
@@ -116,6 +116,7 @@ func removeJob(taskId string) {
 	log.Printf("inactive taskId: %v", taskId)
 
 	jobId := taskJobs[taskId]
+	log.Printf("remove jobId: %v", jobId)
 	err = scheduler.RemoveJob(jobId)
 	if err != nil {
 		log.Printf("Error removing job: %v\n", err)
