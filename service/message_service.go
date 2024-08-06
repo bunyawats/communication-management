@@ -14,16 +14,23 @@ const (
 	jobTopicName     = "job_topic"
 )
 
+type MessageService struct {
+	*amqp091.Connection
+}
+
+func NewMessageService(rabbitUri string) (*MessageService, error) {
+
+	conn, err := amqp091.Dial(rabbitUri)
+	if err != nil {
+		log.Printf("%s: %s", "Failed to connect to RabbitMQ", err)
+		return nil, err
+	}
+	return &MessageService{Connection: conn}, nil
+}
+
 func failOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)
-	}
-}
-
-func closeMqConnection(conn *amqp091.Connection) {
-	err := conn.Close()
-	if err != nil {
-		log.Printf("Error closing RabbitMQ connection: %v", err)
 	}
 }
 
@@ -34,13 +41,9 @@ func closeMqChannel(ch *amqp091.Channel) {
 	}
 }
 
-func publishMqMessage(msqBody string, qName string) {
+func (s MessageService) publishMqMessage(msqBody string, qName string) {
 
-	conn, err := amqp091.Dial(model.RabbitUri)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer closeMqConnection(conn)
-
-	ch, err := conn.Channel()
+	ch, err := s.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
@@ -68,16 +71,12 @@ func publishMqMessage(msqBody string, qName string) {
 	failOnError(err, "Failed to publish message to queue in RabbitMQ")
 }
 
-func consumeMqMessage(qName string) (
+func (s MessageService) consumeMqMessage(qName string) (
 	<-chan amqp091.Delivery,
-	*amqp091.Connection,
 	*amqp091.Channel,
 ) {
 
-	conn, err := amqp091.Dial(model.RabbitUri)
-	failOnError(err, "Failed to connect to RabbitMQ")
-
-	ch, err := conn.Channel()
+	ch, err := s.Channel()
 	failOnError(err, "Failed to open a channel")
 
 	q, err := ch.QueueDeclare(
@@ -100,83 +99,70 @@ func consumeMqMessage(qName string) (
 		nil,
 	)
 	failOnError(err, "Failed to message from queue in RabbitMQ")
-	return msgs, conn, ch
+	return msgs, ch
 }
 
-func ConsumeScanner() {
+func (s MessageService) ConsumeScanner(executor func([]byte, func(t model.Task))) {
 
-	msgs, conn, ch := consumeMqMessage(scannerQueueName)
-	defer closeMqConnection(conn)
+	msgs, ch := s.consumeMqMessage(scannerQueueName)
 	defer closeMqChannel(ch)
 
 	for d := range msgs {
 		log.Println("-----------------------------")
 		log.Printf("executeScanner: %v\n", string(d.Body))
-		go ExecuteScanner(Rs, d.Body)
+		go executor(d.Body, s.SignalToAllSchedulerProcess)
 	}
 }
 
-func ConsumeTasks() {
+func (s MessageService) ConsumeTasks(executor func([]byte, func([]string))) {
 
-	msgs, conn, ch := consumeMqMessage(taskQueueNam)
-	defer closeMqConnection(conn)
+	msgs, ch := s.consumeMqMessage(taskQueueNam)
 	defer closeMqChannel(ch)
 
 	for d := range msgs {
 		log.Println("-----------------------------")
 		log.Printf("executeTask: %v\n", string(d.Body))
-		go ExecuteTask(Rs, d.Body)
+		go executor(d.Body, s.EnqueueChunk)
 	}
 }
 
-func ConsumeChunks() {
+func (s MessageService) ConsumeChunks(executor func(body []byte)) {
 
-	msgs, conn, ch := consumeMqMessage("chunk_queue")
-	defer closeMqConnection(conn)
+	msgs, ch := s.consumeMqMessage("chunk_queue")
 	defer closeMqChannel(ch)
 
 	for d := range msgs {
-		ExecuteChunk(d.Body)
+		executor(d.Body)
 	}
 }
 
-func EnqueueScanner(fileName string) {
+func (s MessageService) EnqueueScanner(fileName string) {
 
 	log.Printf("enqueueScanner: %v on schedule", fileName)
 
-	publishMqMessage(fileName, scannerQueueName)
+	s.publishMqMessage(fileName, scannerQueueName)
 }
 
-func EnqueueTask(taskId string) {
+func (s MessageService) EnqueueTask(taskId string) {
 
 	log.Printf("enqueueTask: %v on schedule", taskId)
 
-	publishMqMessage(taskId, taskQueueNam)
+	s.publishMqMessage(taskId, taskQueueNam)
 }
 
-func EnqueueChunk(chunkList []string) {
-
-	conn, err := amqp091.Dial(model.RabbitUri)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer closeMqConnection(conn)
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer closeMqChannel(ch)
+func (s MessageService) EnqueueChunk(chunkList []string) {
 
 	log.Println("Start enqueue chunks")
 	for _, chunkPartition := range chunkList {
 		log.Println(chunkPartition)
 
-		publishMqMessage(chunkPartition, chunkQueueName)
+		s.publishMqMessage(chunkPartition, chunkQueueName)
 	}
 }
 
-func SignalToAllSchedulerProcess(t model.Task) {
+func (s MessageService) SignalToAllSchedulerProcess(t model.Task) {
 
-	conn, err := amqp091.Dial(model.RabbitUri)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer closeMqConnection(conn)
-	ch, err := conn.Channel()
+	ch, err := s.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 
@@ -203,20 +189,17 @@ func SignalToAllSchedulerProcess(t model.Task) {
 		false,            // immediate
 		amqp091.Publishing{
 			ContentType: "text/plain",
-			Body:        []byte(body),
+			Body:        body,
 		})
 	failOnError(err, "Failed to publish a message")
 	log.Printf(" [x] Sent %s", body)
 }
 
-func SubscribeSignal(removeJob func(taskId string),
+func (s MessageService) SubscribeSignal(removeJob func(taskId string),
 	createJobForTask func(t model.Task),
 ) {
 
-	conn, err := amqp091.Dial(model.RabbitUri)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer closeMqConnection(conn)
-	ch, err := conn.Channel()
+	ch, err := s.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer closeMqChannel(ch)
 

@@ -1,8 +1,6 @@
 package service
 
 import (
-	"context"
-	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -21,37 +19,28 @@ import (
 )
 
 const (
-	mysqlUri  = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
 	mutexName = "distributed-lock"
 	redisUri  = "localhost:6379"
 )
 
-var (
-	db   *sql.DB
-	err  error
-	repo *data.Repository
-	Rs   *redsync.Redsync
-)
+type TaskService struct {
+	*data.Repository
+	*redsync.Redsync
+}
 
-func init() {
-
-	ctx := context.Background()
-
-	db, err = sql.Open("mysql", mysqlUri)
-	if err != nil {
-		//l.Error("Fail on connect to MySql")
-		log.Fatal("can not open database")
-	}
-
-	repo = data.NewRepository(db, ctx)
+func NewTaskService(
+	repository *data.Repository) *TaskService {
 
 	client := redis.NewClient(&redis.Options{
 		Addr: redisUri,
 	})
-
 	pool := goredis.NewPool(client)
-	Rs = redsync.New(pool)
+	rs := redsync.New(pool)
 
+	return &TaskService{
+		Repository: repository,
+		Redsync:    rs,
+	}
 }
 
 func generateUniqProcessId() string {
@@ -78,7 +67,7 @@ func loadManifest(manifestFile string) (model.Manifest, error) {
 		fmt.Println("Error opening file:", err)
 		return model.Manifest{}, err
 	}
-	defer file.Close()
+	defer closeFile(file)
 
 	// Read the file content
 	byteValue, err := io.ReadAll(file)
@@ -96,6 +85,13 @@ func loadManifest(manifestFile string) (model.Manifest, error) {
 	}
 
 	return manifest, nil
+}
+
+func closeFile(file *os.File) {
+	err := file.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // MoveFile moves a file from src to dst
@@ -116,7 +112,7 @@ func moveProcessedFile(fullFilePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer sourceFile.Close()
+	defer closeFile(sourceFile)
 
 	separator := "/"
 
@@ -138,7 +134,7 @@ func moveProcessedFile(fullFilePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer destinationFile.Close()
+	defer closeFile(destinationFile)
 
 	// Copy the contents from source to destination
 	if _, err := io.Copy(destinationFile, sourceFile); err != nil {
@@ -153,12 +149,12 @@ func moveProcessedFile(fullFilePath string) error {
 	return nil
 }
 
-func ExecuteTask(rs *redsync.Redsync, body []byte) {
+func (s *TaskService) ExecuteTask(body []byte, enqueueChunk func([]string)) {
 
 	taskId := string(body)
 	taskLockName := fmt.Sprintf("%s_%s", mutexName, taskId)
 	log.Printf("taskLockName: %v", taskLockName)
-	mutex := rs.NewMutex(taskLockName)
+	mutex := s.NewMutex(taskLockName)
 	if err := mutex.TryLock(); err != nil {
 		log.Printf("Could not obtain lock: %v\n", err)
 		return
@@ -166,11 +162,11 @@ func ExecuteTask(rs *redsync.Redsync, body []byte) {
 
 	log.Printf("Obtained lock, executing task: %s\n", taskId)
 
-	chunkPartitionList, err := repo.ListAllChunkPartition(taskId)
+	chunkPartitionList, err := s.ListAllChunkPartition(taskId)
 	if err != nil {
 		log.Println(err)
 	} else {
-		EnqueueChunk(chunkPartitionList)
+		enqueueChunk(chunkPartitionList)
 	}
 
 	if ok, err := mutex.Unlock(); !ok || err != nil {
@@ -180,12 +176,12 @@ func ExecuteTask(rs *redsync.Redsync, body []byte) {
 	}
 }
 
-func ExecuteScanner(rs *redsync.Redsync, body []byte) {
+func (s *TaskService) ExecuteScanner(body []byte, signal func(task model.Task)) {
 
 	manifestFileName := string(body)
 	taskLockName := fmt.Sprintf("%s_%s", mutexName, manifestFileName)
 	log.Printf("taskLockName: %v", taskLockName)
-	mutex := rs.NewMutex(taskLockName)
+	mutex := s.NewMutex(taskLockName)
 	if err := mutex.TryLock(); err != nil {
 		log.Printf("Could not obtain lock: %v\n", err)
 		return
@@ -193,12 +189,12 @@ func ExecuteScanner(rs *redsync.Redsync, body []byte) {
 
 	log.Printf("Obtained lock, executing scanner: %s\n", manifestFileName)
 	manifestFile := "../manage_task/manifest.json"
-	task, err := CreatNewTask(manifestFile)
+	task, err := s.CreatNewTask(manifestFile)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	SignalToAllSchedulerProcess(task)
+	signal(task)
 
 	if ok, err := mutex.Unlock(); !ok || err != nil {
 		log.Println("Could not release lock:", err)
@@ -207,7 +203,7 @@ func ExecuteScanner(rs *redsync.Redsync, body []byte) {
 	}
 }
 
-func CreatNewTask(manifestFile string) (model.Task, error) {
+func (s *TaskService) CreatNewTask(manifestFile string) (model.Task, error) {
 
 	taskId := generateUniqProcessId()
 	log.Println("Create New Task")
@@ -247,7 +243,7 @@ func CreatNewTask(manifestFile string) (model.Task, error) {
 	for _, record := range records {
 		log.Printf("Email: %s\n", record[0])
 		chunkPartition := fmt.Sprintf("%v_%v", taskId, chunkCounter)
-		_ = repo.CreateNewNotificationDetail(model.NotificationDetail{
+		_ = s.CreateNewNotificationDetail(model.NotificationDetail{
 			Email:          record[0],
 			ChunkPartition: chunkPartition,
 			TaskID:         taskId,
@@ -271,7 +267,7 @@ func CreatNewTask(manifestFile string) (model.Task, error) {
 		ChunkSize:       manifest.Data.ChunkSize,
 		TaskStatus:      model.Status_Ceated,
 	}
-	err = repo.CreateNewTask(task)
+	err = s.CreateNewTask(task)
 
 	err = moveProcessedFile(manifestFile)
 	err = moveProcessedFile(dataInputFile)
@@ -279,14 +275,14 @@ func CreatNewTask(manifestFile string) (model.Task, error) {
 	return task, err
 }
 
-func DeleteExistTask(taskId string) (model.Task, error) {
+func (s *TaskService) DeleteExistTask(taskId string) (model.Task, error) {
 
 	task := model.Task{}
-	err := repo.UpdateTaskStatus(taskId, model.Status_Inactive)
+	err := s.UpdateTaskStatus(taskId, model.Status_Inactive)
 	if err != nil {
 		log.Printf("can not delete exisit task %v", err)
 	}
-	task, err = repo.GetTaskById(taskId)
+	task, err = s.GetTaskById(taskId)
 	if err != nil {
 		log.Printf("can not get exisit task %v", err)
 		return task, err
@@ -295,10 +291,10 @@ func DeleteExistTask(taskId string) (model.Task, error) {
 	return task, nil
 }
 
-func ExecuteChunk(body []byte) {
+func (s *TaskService) ExecuteChunk(body []byte) {
 	log.Printf("msg body: %s\n", body)
 	chunkId := string(body)
-	emailList, err := repo.ListNotiEmailByChunk(chunkId)
+	emailList, err := s.ListNotiEmailByChunk(chunkId)
 	if err != nil {
 		log.Println(err)
 		return

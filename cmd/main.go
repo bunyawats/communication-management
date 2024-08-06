@@ -12,32 +12,33 @@ import (
 )
 
 const (
-	redisUri = "localhost:6379"
-	mysqlUri = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
+	mysqlUri  = "test:test@tcp(127.0.0.1:3306)/test?parseTime=true"
+	RabbitUri = "amqp://user:password@localhost:5672/"
+
+	TimeFormat = "2006-01-02 15:04:05"
 )
 
 var (
-	db  *sql.DB
-	err error
-
-	repo *data.Repository
-
-	ctx = context.Background()
-
+	repo      *data.Repository
 	scheduler gocron.Scheduler
-
-	taskJobs = make(model.TaskJobs)
+	taskJobs  = make(model.TaskJobs)
+	mqService *service.MessageService
 )
 
 func init() {
 
-	db, err = sql.Open("mysql", mysqlUri)
+	db, err := sql.Open("mysql", mysqlUri)
 	if err != nil {
 		//l.Error("Fail on connect to MySql")
 		log.Fatal("can not open database")
 	}
-
+	ctx := context.Background()
 	repo = data.NewRepository(db, ctx)
+
+	mqService, err = service.NewMessageService(RabbitUri)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	scheduler, err = gocron.NewScheduler()
 	if err != nil {
@@ -59,7 +60,7 @@ func main() {
 
 	// start the scheduler
 	scheduler.Start()
-	go service.SubscribeSignal(removeJob, createJobForTask)
+	go mqService.SubscribeSignal(removeJob, createJobForTask)
 
 	log.Println("waiting for messages")
 	wait := make(chan struct{})
@@ -77,7 +78,7 @@ func createManifestScannerTask() {
 		jobDefinition,
 		gocron.NewTask(
 			func(manifestFile string) {
-				service.EnqueueScanner(manifestFile)
+				mqService.EnqueueScanner(manifestFile)
 			},
 			manifestFileName,
 		),
@@ -98,7 +99,7 @@ func createJobForTask(t model.Task) {
 		jobDefinition,
 		gocron.NewTask(
 			func(t model.Task) {
-				service.EnqueueTask(t.TaskID)
+				mqService.EnqueueTask(t.TaskID)
 			},
 			t,
 		),
@@ -117,7 +118,7 @@ func removeJob(taskId string) {
 
 	jobId := taskJobs[taskId]
 	log.Printf("remove jobId: %v", jobId)
-	err = scheduler.RemoveJob(jobId)
+	err := scheduler.RemoveJob(jobId)
 	if err != nil {
 		log.Printf("Error removing job: %v\n", err)
 	}
@@ -130,7 +131,7 @@ func createJobDefinition(pattern string) gocron.JobDefinition {
 	if err != nil {
 		log.Fatalf("Failed to load location: %v", err)
 	}
-	t, err := time.ParseInLocation(model.TimeFormat, pattern, bangkokLocation)
+	t, err := time.ParseInLocation(TimeFormat, pattern, bangkokLocation)
 	if err != nil {
 		log.Printf("Failed to parse time: %v", err)
 		return gocron.CronJob(pattern, false)
