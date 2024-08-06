@@ -197,7 +197,7 @@ func SignalToAllSchedulerProcess(t model.Task) {
 	}
 
 	err = ch.Publish(
-		"topic_logs",     // exchange
+		jobTopicName,     // exchange
 		model.RoutingKey, // routing key
 		false,            // mandatory
 		false,            // immediate
@@ -244,7 +244,7 @@ func SubscribeSignal(removeJob func(taskId string),
 	err = ch.QueueBind(
 		q.Name,           // queue name
 		model.RoutingKey, // routing key
-		"topic_logs",     // exchange
+		jobTopicName,     // exchange
 		false,
 		nil)
 	failOnError(err, "Failed to bind a queue")
